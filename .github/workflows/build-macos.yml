@@ -1,0 +1,66 @@
+name: Build Rocky RAW Studio Mac
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-15-intel
+            arch: x64
+            label: Intel
+          - runner: macos-15
+            arch: arm64
+            label: Apple-Silicon
+
+    runs-on: ${{ matrix.runner }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          architecture: ${{ matrix.arch }}
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install "pywebview>=5,<7" "pyinstaller>=6,<7" Pillow
+          python -m pip install --only-binary=:all: rawpy
+          python -c "import webview, rawpy; from PIL import Image"
+
+      - name: Build Mac app
+        run: |
+          python -m PyInstaller \
+            --noconfirm --clean --onedir --windowed \
+            --name Rocky_RAW_Studio \
+            --osx-bundle-identifier com.rocky.rawstudio \
+            --add-data "index.html:." \
+            --add-data "assets:assets" \
+            --collect-all webview \
+            --collect-all rawpy \
+            --hidden-import PIL.Image \
+            --hidden-import PIL.ImageOps \
+            mac_launcher.py
+
+      - name: Package app
+        run: |
+          ditto -c -k --sequesterRsrc --keepParent \
+            dist/Rocky_RAW_Studio.app \
+            Rocky-RAW-Studio-Mac-${{ matrix.label }}.zip
+
+      - name: Upload app
+        uses: actions/upload-artifact@v4
+        with:
+          name: Rocky-RAW-Studio-Mac-${{ matrix.label }}
+          path: Rocky-RAW-Studio-Mac-${{ matrix.label }}.zip
+          if-no-files-found: error
